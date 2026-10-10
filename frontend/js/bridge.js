@@ -50,6 +50,24 @@ class QtBridgeService {
         });
       }
 
+      if (this.pyBridge.sessionSwitched) {
+        this.pyBridge.sessionSwitched.connect((id) => {
+          this.emit("session:switched", id);
+        });
+      }
+      
+      if (this.pyBridge.messagesLoaded) {
+        this.pyBridge.messagesLoaded.connect((id, messagesJson) => {
+          try {
+            const messages = JSON.parse(messagesJson);
+            this.emit("storage:messages", { id, messages });
+          } catch (e) {
+            console.error("[Bridge] Error parsing messages", e);
+            this.emit("storage:messages", { id, messages: [] });
+          }
+        });
+      }
+
       this.emit("ready");
     });
   }
