@@ -805,3 +805,24 @@ body {
 .sidebar.collapsed .sidebar-nav-btn svg {
   margin: 0;
 }
+
+.chat-model-dropdown {
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  font-weight: 500;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding-right: 8px;
+}
+
+.chat-model-dropdown option {
+  background: var(--bg-secondary);
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.chat-model-dropdown:hover {
+  color: #fff;
+}

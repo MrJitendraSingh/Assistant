@@ -137,3 +137,8 @@ class BridgeChannel(QObject):
     def save_model_settings(self, model_name: str, temperature: float, system_prompt: str, user_name: str, user_overview: str, ai_name: str, voice_profile: str):
         SettingsRepository.save_settings(model_name, temperature, system_prompt, user_name, user_overview, ai_name, voice_profile)
         print(f"[Settings] Saved complete profile for {model_name}")
+
+    @Slot(str)
+    def switch_active_model(self, model_name: str):
+        SettingsRepository.update_last_used(model_name)
+        print(f"[Settings] Switched active model to {model_name} via chat screen")

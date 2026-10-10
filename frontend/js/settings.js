@@ -77,10 +77,16 @@ function initializeSettingsUI() {
     window.bridgeService.pyBridge.modelsLoaded.connect((modelsJson) => {
       try {
         const models = JSON.parse(modelsJson);
-        modelSelect.innerHTML = models.length === 0 
-          ? `<option value="" disabled selected>No models detected</option>` 
-          : "";
-        models.forEach(model => modelSelect.add(new Option(model, model)));
+        const chatModelSelect = document.getElementById("chat-model-select"); // The new UI dropdown
+        
+        modelSelect.innerHTML = models.length === 0 ? `<option value="" disabled selected>No models detected</option>` : "";
+        if (chatModelSelect) chatModelSelect.innerHTML = "";
+        
+        models.forEach(model => {
+          modelSelect.add(new Option(model, model));
+          if (chatModelSelect) chatModelSelect.add(new Option(model, model));
+        });
+        
         if (models.length > 0) window.bridgeService.pyBridge.load_model_settings(modelSelect.value);
       } catch (err) { console.error("Error parsing models:", err); }
     });
@@ -135,10 +141,27 @@ function initializeSettingsUI() {
           selectedModel, temp, prompt, userName, userOverview, aiName, voiceProfile
         );
         
-        const activeHeader = document.getElementById("active-model-display");
-        if (activeHeader) activeHeader.textContent = selectedModel;
+        const activeHeader = document.getElementById("chat-model-select");
+        if (activeHeader) activeHeader.value = selectedModel;
         
         hideSettings();
       }
     });
+
+    const chatModelSelect = document.getElementById("chat-model-select");
+    if (chatModelSelect) {
+    chatModelSelect.addEventListener("change", () => {
+      const selectedModel = chatModelSelect.value;
+      
+      // 1. Sync the hidden settings menu to match
+      modelSelect.value = selectedModel;
+      window.bridgeService.pyBridge.load_model_settings(selectedModel);
+      
+      // 2. Tell Python to update the last_used timestamp in the database
+      if (window.bridgeService?.pyBridge?.switch_active_model) {
+        window.bridgeService.pyBridge.switch_active_model(selectedModel);
+      }
+    });
+  }
+
 }

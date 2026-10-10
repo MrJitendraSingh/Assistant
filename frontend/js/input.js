@@ -67,7 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
       window.scrollToBottom();
     }
 
-    const activeModel = document.getElementById("active-model-display").textContent.trim();
+    const activeModel = document.getElementById("chat-model-select").value;
     window.bridgeService.sendMessage(currentId, text, activeModel);
   }
 

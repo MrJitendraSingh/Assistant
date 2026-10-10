@@ -24,8 +24,8 @@ window.SidebarManager = {
     window.bridgeService.on("storage:history", (data) => {
       // Set the active model in the top UI bar
       if (data.active_model) {
-        const activeHeader = document.getElementById("active-model-display");
-        if (activeHeader) activeHeader.textContent = data.active_model;
+        const activeHeader = document.getElementById("chat-model-select");
+        if (activeHeader) activeHeader.value = data.active_model;
       }
 
       const dbSessions = data.sessions || [];

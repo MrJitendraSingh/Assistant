@@ -91,3 +91,13 @@ class SettingsRepository:
                     last_used = CURRENT_TIMESTAMP
             """, (model_name, temperature, system_prompt, user_name, user_overview, ai_name, voice_profile))
             conn.commit()
+
+    @staticmethod
+    def update_last_used(model_name: str):
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("""
+                INSERT INTO model_settings (model_name, last_used)
+                VALUES (?, CURRENT_TIMESTAMP)
+                ON CONFLICT(model_name) DO UPDATE SET last_used = CURRENT_TIMESTAMP
+            """, (model_name,))
+            conn.commit()
