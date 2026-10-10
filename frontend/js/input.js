@@ -67,7 +67,8 @@ document.addEventListener("DOMContentLoaded", () => {
       window.scrollToBottom();
     }
 
-    window.bridgeService.sendMessage(currentId, text);
+    const activeModel = document.getElementById("active-model-display").textContent.trim();
+    window.bridgeService.sendMessage(currentId, text, activeModel);
   }
 
   sendBtn.addEventListener("click", submitPrompt);

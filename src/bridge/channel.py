@@ -2,11 +2,9 @@ import json
 import requests
 from PySide6.QtCore import QObject, Slot, Signal, QThread
 from src.database.repository import ChatRepository
-from src.database.settings import SettingsManager
 import speech_recognition as sr
 from src.workers.audio_worker import AudioListenWorker
-
-
+from src.database.settings import SettingsRepository
 
 
 
@@ -67,6 +65,9 @@ class BridgeChannel(QObject):
     streamFinished = Signal()
     historyLoaded = Signal(str)
     sessionDataLoaded = Signal(str, str)
+    responseComplete = Signal()
+    modelsLoaded = Signal(str)
+    settingsLoaded = Signal(str, float, str)
 
     def __init__(self, webview=None):
         super().__init__()
@@ -77,7 +78,7 @@ class BridgeChannel(QObject):
     def load_initial_state(self):
         try:
             sessions = ChatRepository.get_all_sessions()
-            settings = SettingsManager.get_all()
+            settings = SettingsRepository.get_all()
             payload = json.dumps({"sessions": sessions, "settings": settings})
             self.historyLoaded.emit(payload)
         except Exception as e:
@@ -151,3 +152,65 @@ class BridgeChannel(QObject):
         if hasattr(self, 'audio_worker') and self.audio_worker.isRunning():
             print("[Python] Auto-send triggered. Waiting for final transcription...")
             # We let the thread finish naturally so it can emit the speechRecognized signal
+
+    @Slot(str, str, str)
+    def send_message(self, session_id: str, message: str, active_model: str):
+        try:
+            model_config = SettingsRepository.get_settings(active_model)
+            temperature = model_config.get("temperature", 0.7)
+            system_prompt = model_config.get("system_prompt", "")
+
+            payload = {
+                "model": active_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ],
+                "options": {
+                    "temperature": temperature
+                },
+                "stream": True
+            }
+
+            response = requests.post("http://localhost:11434/api/chat", json=payload, stream=True)
+            response.raise_for_status()
+
+            for line in response.iter_lines():
+                if line:
+                    data = json.loads(line)
+                    if "message" in data and "content" in data["message"]:
+                        self.tokenReceived.emit(data["message"]["content"])
+                    if data.get("done"):
+                        self.responseComplete.emit()
+
+        except Exception as e:
+            print(f"[Ollama] Chat error: {e}")
+            self.tokenReceived.emit(f"\n\n**Error:** {str(e)}")
+            self.responseComplete.emit()
+
+
+
+    @Slot()
+    def fetch_installed_models(self):
+        try:
+            # Reaches out to your local Ollama app
+            response = requests.get("http://localhost:11434/api/tags", timeout=2)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extracts the names and sends them back to JavaScript
+            models = [model["name"] for model in data.get("models", [])]
+            self.modelsLoaded.emit(json.dumps(models))
+        except Exception as e:
+            print(f"[Ollama] Error fetching models: {e}")
+            self.modelsLoaded.emit(json.dumps([]))
+
+    @Slot(str)
+    def load_model_settings(self, model_name: str):
+        settings = SettingsRepository.get_settings(model_name)
+        self.settingsLoaded.emit(model_name, settings["temperature"], settings["system_prompt"])
+
+    @Slot(str, float, str)
+    def save_model_settings(self, model_name: str, temperature: float, system_prompt: str):
+        SettingsRepository.save_settings(model_name, temperature, system_prompt)
+        print(f"[Settings] Saved profile for {model_name}")

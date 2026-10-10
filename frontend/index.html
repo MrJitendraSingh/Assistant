@@ -4,8 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gemini Desktop</title>
+  
+  <!-- Stylesheets -->
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/settings.css">
   <link rel="stylesheet" href="styles/github-dark.min.css">
+  
   <!-- Vendor scripts -->
   <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
   <script src="js/vendor/marked.min.js"></script>
@@ -35,59 +39,76 @@
 
       <div class="sidebar-section">
         <div class="section-title">Recent</div>
-        <!-- THIS IS THE CRITICAL ELEMENT -->
-        <ul class="chat-list" id="chat-list">
-           <!-- JavaScript will inject <li> items here -->
-        </ul>
+        <!-- JavaScript will inject <li> items here -->
+        <ul class="chat-list" id="chat-list"></ul>
+      </div>
+
+      <!-- Settings Button in Sidebar Footer -->
+      <div class="sidebar-footer">
+        <button class="sidebar-nav-btn" id="open-settings-btn" title="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span class="btn-text">Settings</span>
+        </button>
       </div>
     </aside>
 
     <!-- Main Workspace -->
     <main class="main-content">
-      <header class="app-header">
-        <div class="model-badge">
-          <span>Gemini 2.5 Flash</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      
+      <!-- VIEW 1: Chat Workspace -->
+      <div class="view-panel" id="chat-view">
+        <header class="app-header">
+          <div class="model-badge">
+            <span id="active-model-display">Gemini 2.5 Flash</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
+        </header>
+
+        <!-- Chat Canvas -->
+        <div class="chat-viewport" id="chat-scroll-area">
+          <div class="chat-thread" id="chat-container"></div>
         </div>
-      </header>
 
-      <!-- Chat Canvas -->
-      <div class="chat-viewport" id="chat-scroll-area">
-        <div class="chat-thread" id="chat-container"></div>
-      </div>
-
-      <!-- Floating Input Bar Zone -->
-      <footer class="input-zone">
-        <div class="capsule-container pill-style">
-          <button class="tool-btn add-btn" title="Add attachment">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          </button>
-          
-          <textarea id="prompt-input" rows="1" placeholder="Ask Gemini..."></textarea>
-          
-          <div class="right-actions">
-            <!-- Inline Mic Button -->
-            <button class="tool-btn" id="mic-btn" title="Dictate">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+        <!-- Floating Input Bar Zone -->
+        <footer class="input-zone">
+          <div class="capsule-container pill-style">
+            <button class="tool-btn add-btn" title="Add attachment">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
             
-            <!-- Dynamic Action Button (Defaults to Voice Wave) -->
-            <button class="action-circle-btn" id="send-btn" title="Voice Mode">
-              <svg id="dynamic-btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 7v10M7 7v10M22 10v4M2 10v4"/></svg>
-            </button>
+            <textarea id="prompt-input" rows="1" placeholder="Ask Gemini..."></textarea>
+            
+            <div class="right-actions">
+              <button class="tool-btn" id="mic-btn" title="Dictate">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+              </button>
+              
+              <button class="action-circle-btn" id="send-btn" title="Voice Mode">
+                <svg id="dynamic-btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 7v10M7 7v10M22 10v4M2 10v4"/></svg>
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="disclaimer-text">
-          Gemini may display inaccurate info, including about people, so double-check its responses.
-        </div>
-      </footer>
+          <div class="disclaimer-text">
+            Gemini may display inaccurate info, including about people, so double-check its responses.
+          </div>
+        </footer>
+      </div>
+
+      <!-- VIEW 2: Settings Mount Point (Dynamically injected by settings.js) -->
+      <div id="settings-mount-point"></div>
+
     </main>
   </div>
 
+  <!-- App Scripts -->
   <script src="js/bridge.js"></script>
   <script src="js/sidebar.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/input.js"></script>
   <script src="js/voice.js"></script>
+  <script src="js/settings.js"></script>
 </body>
 </html>

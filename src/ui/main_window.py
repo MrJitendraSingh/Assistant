@@ -4,6 +4,7 @@ from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QMainWindow
 from src.bridge.channel import BridgeChannel
+from src.database.settings import SettingsRepository 
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -17,6 +18,7 @@ class MainWindow(QMainWindow):
         # Connect IPC
         self.channel = QWebChannel()
         self.bridge = BridgeChannel(self.web_view)
+        SettingsRepository.initialize()
         self.channel.registerObject("bridge", self.bridge)
         self.web_view.page().setWebChannel(self.channel)
 
