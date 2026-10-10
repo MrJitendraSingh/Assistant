@@ -1,64 +1,11 @@
 import json
 import requests
-from PySide6.QtCore import QObject, Slot, Signal, QThread
+from PySide6.QtCore import QObject, Slot, Signal
+
 from src.database.repository import ChatRepository
-import speech_recognition as sr
-from src.workers.audio_worker import AudioListenWorker
 from src.database.settings import SettingsRepository
-
-
-
-class OllamaStreamWorker(QThread):
-    token_received = Signal(str)
-    stream_finished = Signal(str, str)
-
-    def __init__(self, session_id, prompt, model_name="llama3.2"): 
-        super().__init__()
-        self.session_id = session_id
-        self.prompt = prompt
-        self.model_name = model_name
-
-    def run(self):
-        # 1. Fetch full conversation history from SQLite for context memory
-        db_messages = ChatRepository.get_session_messages(self.session_id)
-        
-        messages = []
-        for msg in db_messages:
-            messages.append({"role": msg["role"], "content": msg["content"]})
-            
-        full_response = ""
-        
-        try:
-            # 2. Call local Ollama API with streaming enabled
-            response = requests.post(
-                "http://localhost:11434/api/chat",
-                json={"model": self.model_name, "messages": messages},
-                stream=True,
-                timeout=10
-            )
-            response.raise_for_status()
-
-            # 3. Read the stream chunk by chunk and emit to JS
-            for line in response.iter_lines():
-                if line:
-                    data = json.loads(line)
-                    if "message" in data and "content" in data["message"]:
-                        chunk = data["message"]["content"]
-                        full_response += chunk
-                        self.token_received.emit(chunk)
-
-        except requests.exceptions.ConnectionError:
-            error_msg = "\n\n**Error:** Cannot connect to Ollama. Is the Ollama app running in the background?"
-            full_response += error_msg
-            self.token_received.emit(error_msg)
-        except Exception as e:
-            error_msg = f"\n\n**Error:** {str(e)}"
-            full_response += error_msg
-            self.token_received.emit(error_msg)
-
-        # 4. Signal completion to save to DB and unlock the UI
-        self.stream_finished.emit(self.session_id, full_response)
-
+from src.workers.audio_worker import AudioListenWorker
+from src.workers.ollama_worker import OllamaStreamWorker
 
 class BridgeChannel(QObject):
     tokenReceived = Signal(str)
@@ -67,7 +14,12 @@ class BridgeChannel(QObject):
     sessionDataLoaded = Signal(str, str)
     responseComplete = Signal()
     modelsLoaded = Signal(str)
-    settingsLoaded = Signal(str, float, str)
+    
+    # FIX: Update this signature to accept all 7 arguments
+    settingsLoaded = Signal(str, float, str, str, str, str, str) 
+    
+    speechRecognized = Signal(str)
+    isListening = Signal(bool)
 
     def __init__(self, webview=None):
         super().__init__()
@@ -79,7 +31,15 @@ class BridgeChannel(QObject):
         try:
             sessions = ChatRepository.get_all_sessions()
             settings = SettingsRepository.get_all()
-            payload = json.dumps({"sessions": sessions, "settings": settings})
+            
+            # FIX: Use the new timestamp-based method to get the active model
+            active_model = SettingsRepository.get_latest_model()
+            
+            payload = json.dumps({
+                "sessions": sessions, 
+                "settings": settings,
+                "active_model": active_model
+            })
             self.historyLoaded.emit(payload)
         except Exception as e:
             print(f"[Python] ERROR loading database: {e}")
@@ -104,33 +64,23 @@ class BridgeChannel(QObject):
     def rename_session(self, session_id: str, new_title: str):
         ChatRepository.rename_session(session_id, new_title)
 
-    @Slot(str, str)
-    def send_user_message(self, session_id: str, prompt: str):
+    @Slot(str, str, str)
+    def send_message(self, session_id: str, prompt: str, active_model: str):
+        # 1. Save the user's prompt to the SQLite database
         ChatRepository.save_message(session_id, "user", prompt)
-
-        # Change "qwen:4b" to "llama3.2" right here:
-        self.worker = OllamaStreamWorker(session_id, prompt, model_name="llama3.2") 
+        
+        # 2. Pass the user's selected model to the worker thread
+        self.worker = OllamaStreamWorker(session_id, prompt, model_name=active_model) 
         self.worker.token_received.connect(self.tokenReceived)
         self.worker.stream_finished.connect(self._on_stream_complete)
         self.worker.start()
 
-    # CRITICAL: @Slot decorator ensures thread safety when worker finishes
     @Slot(str, str)
     def _on_stream_complete(self, session_id: str, full_response: str):
         ChatRepository.save_message(session_id, "assistant", full_response)
-        self.streamFinished.emit()
-
-
-    tokenReceived = Signal(str)
-    streamFinished = Signal()
-    historyLoaded = Signal(str)
-    sessionDataLoaded = Signal(str, str)
-    
-    # NEW Audio signals
-    speechRecognized = Signal(str)
-    isListening = Signal(bool)
-
-    # ... existing init and slots ...
+        
+        # FIX: Change from self.streamFinished.emit() to match the JS listener
+        self.responseComplete.emit()
 
     @Slot()
     def start_listening(self):
@@ -153,43 +103,6 @@ class BridgeChannel(QObject):
             print("[Python] Auto-send triggered. Waiting for final transcription...")
             # We let the thread finish naturally so it can emit the speechRecognized signal
 
-    @Slot(str, str, str)
-    def send_message(self, session_id: str, message: str, active_model: str):
-        try:
-            model_config = SettingsRepository.get_settings(active_model)
-            temperature = model_config.get("temperature", 0.7)
-            system_prompt = model_config.get("system_prompt", "")
-
-            payload = {
-                "model": active_model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": message}
-                ],
-                "options": {
-                    "temperature": temperature
-                },
-                "stream": True
-            }
-
-            response = requests.post("http://localhost:11434/api/chat", json=payload, stream=True)
-            response.raise_for_status()
-
-            for line in response.iter_lines():
-                if line:
-                    data = json.loads(line)
-                    if "message" in data and "content" in data["message"]:
-                        self.tokenReceived.emit(data["message"]["content"])
-                    if data.get("done"):
-                        self.responseComplete.emit()
-
-        except Exception as e:
-            print(f"[Ollama] Chat error: {e}")
-            self.tokenReceived.emit(f"\n\n**Error:** {str(e)}")
-            self.responseComplete.emit()
-
-
-
     @Slot()
     def fetch_installed_models(self):
         try:
@@ -207,10 +120,20 @@ class BridgeChannel(QObject):
 
     @Slot(str)
     def load_model_settings(self, model_name: str):
-        settings = SettingsRepository.get_settings(model_name)
-        self.settingsLoaded.emit(model_name, settings["temperature"], settings["system_prompt"])
+        s = SettingsRepository.get_settings(model_name)
+        # Emit all data back to JS
+        self.settingsLoaded.emit(
+            model_name, 
+            s["temperature"], 
+            s["system_prompt"],
+            s["user_name"],
+            s["user_overview"],
+            s["ai_name"],
+            s["voice_profile"]
+        )
 
-    @Slot(str, float, str)
-    def save_model_settings(self, model_name: str, temperature: float, system_prompt: str):
-        SettingsRepository.save_settings(model_name, temperature, system_prompt)
-        print(f"[Settings] Saved profile for {model_name}")
+    # UPDATE: Slot signature expanded to match all form fields
+    @Slot(str, float, str, str, str, str, str)
+    def save_model_settings(self, model_name: str, temperature: float, system_prompt: str, user_name: str, user_overview: str, ai_name: str, voice_profile: str):
+        SettingsRepository.save_settings(model_name, temperature, system_prompt, user_name, user_overview, ai_name, voice_profile)
+        print(f"[Settings] Saved complete profile for {model_name}")

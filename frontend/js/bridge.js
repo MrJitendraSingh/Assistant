@@ -14,20 +14,17 @@ class QtBridgeService {
       setTimeout(() => this.init(), 40);
       return;
     }
-
     new QWebChannel(qt.webChannelTransport, (channel) => {
-      // 1. Safely grab the Python object regardless of what it was named in Python
       const bridgeObj = channel.objects.pyBridge || channel.objects.bridge || channel.objects.backend;
       
       if (!bridgeObj) {
         console.error("[Bridge] CRITICAL: Python bridge object not found in QWebChannel.");
         return;
       }
-
       this.pyBridge = bridgeObj;
       console.log("[Bridge] PySide Bridge connected successfully");
 
-      // 2. Connect Streaming Signals
+      // 1. Streaming Signals
       if (this.pyBridge.tokenReceived) {
         this.pyBridge.tokenReceived.connect((token) => this.emit("stream:token", token));
       }
@@ -35,29 +32,30 @@ class QtBridgeService {
         this.pyBridge.responseComplete.connect(() => this.emit("stream:end"));
       }
 
-      // 3. Connect Settings Signals
+      // 2. Settings Signals (Updated to handle 7 arguments)
       if (this.pyBridge.modelsLoaded) {
         this.pyBridge.modelsLoaded.connect((modelsJson) => this.emit("settings:models", modelsJson));
       }
       if (this.pyBridge.settingsLoaded) {
-        this.pyBridge.settingsLoaded.connect((model, temp, prompt) => {
-          this.emit("settings:loaded", { model, temp, prompt });
-        });
-      }
-      if (this.pyBridge.userProfileLoaded) {
-        this.pyBridge.userProfileLoaded.connect((name, overview) => {
-          this.emit("settings:profile", { name, overview });
+        this.pyBridge.settingsLoaded.connect((model, temp, prompt, userName, userOverview, aiName, voiceProfile) => {
+          this.emit("settings:loaded", { model, temp, prompt, userName, userOverview, aiName, voiceProfile });
         });
       }
 
-      if (this.pyBridge.sessionSwitched) {
-        this.pyBridge.sessionSwitched.connect((id) => {
-          this.emit("session:switched", id);
+      // 3. Chat History & Session Signals
+      if (this.pyBridge.historyLoaded) {
+        this.pyBridge.historyLoaded.connect((payload) => {
+          try {
+            const data = JSON.parse(payload);
+            this.emit("storage:history", data);
+          } catch (e) {
+            console.error("[Bridge] Error parsing history", e);
+          }
         });
       }
       
-      if (this.pyBridge.messagesLoaded) {
-        this.pyBridge.messagesLoaded.connect((id, messagesJson) => {
+      if (this.pyBridge.sessionDataLoaded) {
+        this.pyBridge.sessionDataLoaded.connect((id, messagesJson) => {
           try {
             const messages = JSON.parse(messagesJson);
             this.emit("storage:messages", { id, messages });
@@ -68,7 +66,9 @@ class QtBridgeService {
         });
       }
 
-      this.emit("ready");
+      // 4. Mark Ready
+      this.isReady = true;
+      this.emit("bridge:ready");
     });
   }
 
@@ -85,18 +85,13 @@ class QtBridgeService {
   }
 
   sendMessage(sessionId, text, modelName) {
-    if (this.pyBridge) {
-      this.pyBridge.send_message(sessionId, text, modelName);
-    } else {
-      console.warn("Cannot send message: Python bridge not connected.");
-    }
+    if (this.pyBridge) this.pyBridge.send_message(sessionId, text, modelName);
   }
 
   loadInitialState() {
     if (this.pyBridge) {
       this.pyBridge.load_initial_state();
     } else {
-      // Retry once ready
       this.on("bridge:ready", () => this.pyBridge.load_initial_state());
     }
   }

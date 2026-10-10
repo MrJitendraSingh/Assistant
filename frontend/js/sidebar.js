@@ -14,17 +14,25 @@ window.SidebarManager = {
     if (this.toggleBtn && this.sidebar) {
       this.toggleBtn.addEventListener("click", () => this.sidebar.classList.toggle("collapsed"));
     }
-
     if (this.newChatBtn) {
       this.newChatBtn.addEventListener("click", () => this.createNewSession());
     }
 
     document.addEventListener("click", () => this.closeAllDropdowns());
 
-    window.bridgeService.on("storage:history", ({ sessions: dbSessions }) => {
+    // Listen for the initial load from SQLite
+    window.bridgeService.on("storage:history", (data) => {
+      // Set the active model in the top UI bar
+      if (data.active_model) {
+        const activeHeader = document.getElementById("active-model-display");
+        if (activeHeader) activeHeader.textContent = data.active_model;
+      }
+
+      const dbSessions = data.sessions || [];
       console.log("[Sidebar] Loaded history from SQLite:", dbSessions.length, "sessions");
+      
       this.sessions = {};
-      if (dbSessions && dbSessions.length > 0) {
+      if (dbSessions.length > 0) {
         dbSessions.forEach((s) => {
           this.sessions[s.id] = { id: s.id, title: s.title, messages: [] };
         });
@@ -37,6 +45,7 @@ window.SidebarManager = {
       }
     });
 
+    // Trigger Python to send the database history
     if (window.bridgeService.isReady) {
       window.bridgeService.loadInitialState();
     } else {
@@ -62,7 +71,6 @@ window.SidebarManager = {
       console.log("[Sidebar] Ignored switch: Already on session", sessionId);
       return;
     }
-
     console.log("[Sidebar] Switching active session to:", sessionId);
     this.currentSessionId = sessionId;
     this.render();
@@ -78,8 +86,7 @@ window.SidebarManager = {
     delete this.sessions[sessionId];
     
     const keys = Object.keys(this.sessions);
-    this.currentSessionId = null; 
-
+    this.currentSessionId = null;
     if (keys.length > 0) {
       this.switchSession(keys[0]);
     } else {
@@ -108,7 +115,6 @@ window.SidebarManager = {
       const session = this.sessions[id];
       const li = document.createElement("li");
       li.className = `chat-item ${id === this.currentSessionId ? "active" : ""}`;
-
       li.innerHTML = `
         <div class="chat-item-left">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -122,14 +128,12 @@ window.SidebarManager = {
           </svg>
         </button>
       `;
-
       li.querySelector(".chat-item-left").addEventListener("click", () => this.switchSession(id));
       
       li.querySelector(".chat-menu-btn").addEventListener("click", (e) => {
         e.stopPropagation();
         this.openMenu(li, id);
       });
-
       this.chatList.appendChild(li);
     });
   },
@@ -139,7 +143,6 @@ window.SidebarManager = {
       this.closeAllDropdowns();
       return;
     }
-    
     this.closeAllDropdowns();
     li.classList.add("menu-open");
     
@@ -149,20 +152,17 @@ window.SidebarManager = {
       <button class="dropdown-item rename"><span>Rename</span></button>
       <button class="dropdown-item delete"><span>Delete</span></button>
     `;
-
     menu.querySelector(".rename").addEventListener("click", (e) => {
       e.stopPropagation();
       this.closeAllDropdowns();
       const newTitle = prompt("New title:", this.sessions[sessionId].title);
       if (newTitle && newTitle.trim()) this.updateTitle(sessionId, newTitle.trim());
     });
-
     menu.querySelector(".delete").addEventListener("click", (e) => {
       e.stopPropagation();
       this.closeAllDropdowns();
       this.deleteSession(sessionId);
     });
-
     li.appendChild(menu);
   }
 };

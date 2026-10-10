@@ -85,28 +85,60 @@ function initializeSettingsUI() {
       } catch (err) { console.error("Error parsing models:", err); }
     });
 
-    window.bridgeService.pyBridge.settingsLoaded.connect((modelName, temp, prompt) => {
+    window.bridgeService.pyBridge.settingsLoaded.connect((modelName, temp, prompt, userName, userOverview, aiName, voiceProfile) => {
+      // Sliders & Textareas
       tempSlider.value = temp;
       tempDisplay.textContent = parseFloat(temp).toFixed(2);
       document.getElementById("setting-model-overview").value = prompt || "";
+      
+      // New Profile & Voice inputs
+      document.getElementById("setting-user-name").value = userName || "";
+      document.getElementById("setting-user-overview").value = userOverview || "";
+      document.getElementById("setting-ai-name").value = aiName || "";
+      
+      const voiceSelect = document.getElementById("setting-voice-select");
+      if (voiceSelect) voiceSelect.value = voiceProfile || "system-default";
     });
   }
   hookBridgeEvents();
 
   modelSelect.addEventListener("change", () => {
-    window.bridgeService.pyBridge.load_model_settings(modelSelect.value);
+    const selectedModel = modelSelect.value;
+    
+    // 1. Load the temperature and prompt into the UI for the newly selected model
+    window.bridgeService.pyBridge.load_model_settings(selectedModel);
+    
+    // 2. Immediately update the active model display in the chat header
+    const activeHeader = document.getElementById("active-model-display");
+    if (activeHeader) activeHeader.textContent = selectedModel;
+    
+    // 3. Tell the Python backend to save this as the global active model
+    if (window.bridgeService?.pyBridge?.set_active_model) {
+      window.bridgeService.pyBridge.set_active_model(selectedModel);
+    }
   });
 
   saveBtn.addEventListener("click", () => {
-    const selectedModel = modelSelect.value;
-    const temp = parseFloat(tempSlider.value);
-    const prompt = document.getElementById("setting-model-overview").value;
-
-    if (window.bridgeService?.pyBridge && selectedModel) {
-      window.bridgeService.pyBridge.save_model_settings(selectedModel, temp, prompt);
-      const activeHeader = document.getElementById("active-model-display");
-      if (activeHeader) activeHeader.textContent = selectedModel;
-      hideSettings();
-    }
-  });
+      const selectedModel = modelSelect.value;
+      const temp = parseFloat(tempSlider.value);
+      const prompt = document.getElementById("setting-model-overview").value;
+      
+      // Grab values from the new form fields
+      const userName = document.getElementById("setting-user-name").value;
+      const userOverview = document.getElementById("setting-user-overview").value;
+      const aiName = document.getElementById("setting-ai-name").value;
+      const voiceProfile = document.getElementById("setting-voice-select").value;
+      
+      if (window.bridgeService?.pyBridge && selectedModel) {
+        // Send all 7 parameters to Python
+        window.bridgeService.pyBridge.save_model_settings(
+          selectedModel, temp, prompt, userName, userOverview, aiName, voiceProfile
+        );
+        
+        const activeHeader = document.getElementById("active-model-display");
+        if (activeHeader) activeHeader.textContent = selectedModel;
+        
+        hideSettings();
+      }
+    });
 }
