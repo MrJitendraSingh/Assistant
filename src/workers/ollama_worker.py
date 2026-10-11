@@ -12,6 +12,10 @@ class OllamaStreamWorker(QThread):
         self.session_id = session_id
         self.prompt = prompt
         self.model_name = model_name
+        self._is_cancelled = False  # NEW: Interruption flag
+
+    def cancel(self):
+        self._is_cancelled = True
 
     def run(self):
         db_messages = ChatRepository.get_session_messages(self.session_id)
@@ -28,6 +32,9 @@ class OllamaStreamWorker(QThread):
             response.raise_for_status()
             
             for line in response.iter_lines():
+                if self._is_cancelled:  # NEW: Break the loop if interrupted
+                    break
+                    
                 if line:
                     data = json.loads(line)
                     if "message" in data and "content" in data["message"]:
@@ -35,10 +42,6 @@ class OllamaStreamWorker(QThread):
                         full_response += chunk
                         self.token_received.emit(chunk)
                         
-        except requests.exceptions.ConnectionError:
-            error_msg = "\n\n**Error:** Cannot connect to Ollama. Is the Ollama app running?"
-            full_response += error_msg
-            self.token_received.emit(error_msg)
         except Exception as e:
             error_msg = f"\n\n**Error:** {str(e)}"
             full_response += error_msg

@@ -142,3 +142,10 @@ class BridgeChannel(QObject):
     def switch_active_model(self, model_name: str):
         SettingsRepository.update_last_used(model_name)
         print(f"[Settings] Switched active model to {model_name} via chat screen")
+
+    @Slot()
+    def abort_generation(self):
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.wait() # Safely shut down the thread
+            print("[Python] Generation interrupted by user voice.")

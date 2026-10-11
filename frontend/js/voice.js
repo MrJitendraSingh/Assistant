@@ -1,69 +1,112 @@
 /**
- * voice.js - Microphone and Speech-to-Text Controller
+ * voice.js - Continuous Voice Loop & Live Text Controller
  */
 document.addEventListener("DOMContentLoaded", () => {
-  const micBtn = document.getElementById("mic-btn");
-  const promptInput = document.getElementById("prompt-input");
+  const voiceView = document.getElementById("voice-view");
+  const orb = document.getElementById("voice-orb");
+  const closeVoiceBtn = document.getElementById("close-voice-btn");
+  const liveTextDisplay = document.getElementById("voice-live-text");
+  
+  window.isVoiceModeActive = false;
+  let currentVoiceResponse = "";
 
-  if (!micBtn || !promptInput) return;
+  function setOrbState(state) {
+    if (!orb) return;
+    orb.className = ""; 
+    orb.classList.add(`orb-${state}`);
+  }
 
-  // Define the sleek SVGs for the mic button
-  const iconMic = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>`;
-  const iconStop = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg>`;
+  window.toggleVoiceMode = function() {
+    window.isVoiceModeActive = true;
+    if (voiceView) voiceView.classList.remove("hidden-view");
+    if (liveTextDisplay) liveTextDisplay.innerText = "Listening...";
+    setOrbState("listening");
+    if (window.bridgeService?.pyBridge) window.bridgeService.pyBridge.start_listening();
+  };
 
-  function initializeVoiceFeatures() {
-    if (!window.bridgeService || !window.bridgeService.pyBridge) {
-      setTimeout(initializeVoiceFeatures, 100); 
-      return;
-    }
-
-    window.bridgeService.pyBridge.isListening.connect((isListening) => {
-      // Tell input.js the mic status and force the send button to visually update
-      window.isMicActive = isListening;
-      if (typeof window.updateButtonState === "function") {
-        window.updateButtonState();
+  if (closeVoiceBtn) {
+    closeVoiceBtn.addEventListener("click", () => {
+      window.isVoiceModeActive = false;
+      if (voiceView) voiceView.classList.add("hidden-view");
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      if (window.bridgeService?.pyBridge) {
+        window.bridgeService.pyBridge.abort_generation();
+        window.bridgeService.pyBridge.stop_listening();
       }
-
-      if (isListening) {
-        // Swap to the red stop square
-        micBtn.innerHTML = iconStop;
-        promptInput.placeholder = "Listening...";
-        promptInput.disabled = true;
-      } else {
-        // Restore the original mic SVG
-        micBtn.innerHTML = iconMic;
-        promptInput.placeholder = "Ask Gemini...";
-        promptInput.disabled = false;
-        promptInput.focus();
-      }
-    });
-
-    window.bridgeService.pyBridge.speechRecognized.connect((text) => {
-      if (text) {
-        promptInput.value = text;
-        promptInput.dispatchEvent(new Event("input"));
-
-        // NEW: If the user clicked the Send button while recording, send it instantly
-        if (window.autoSendTranscription) {
-          window.autoSendTranscription = false;
-          
-          // Small delay to ensure the UI has time to update the text box
-          setTimeout(() => {
-            const sendBtn = document.getElementById("send-btn");
-            if (sendBtn) sendBtn.click();
-          }, 100);
-        }
-      } else {
-        // If transcription failed or was empty, reset the flag
-        window.autoSendTranscription = false;
-      }
-    });
-
-    micBtn.addEventListener("click", () => {
-      if (window.isStreaming) return; 
-      window.bridgeService.pyBridge.start_listening();
     });
   }
 
-  initializeVoiceFeatures();
+  // 1. Core Interruption & Speech Loop
+  if (window.bridgeService?.pyBridge) {
+    window.bridgeService.pyBridge.speechRecognized.connect((text) => {
+      if (!window.isVoiceModeActive) return;
+
+      const cleanText = text ? text.trim() : "";
+      console.log("[Voice] Recognized Text:", cleanText || "(Empty)");
+
+      if (!cleanText) {
+        // If STT fails or hears silence, just restart the mic
+        window.bridgeService.pyBridge.start_listening();
+        return;
+      }
+
+      // INTERRUPTION TRIGGER
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      if (window.bridgeService?.pyBridge?.abort_generation) {
+        window.bridgeService.pyBridge.abort_generation();
+      }
+
+      setOrbState("idle");
+      currentVoiceResponse = "";
+      if (liveTextDisplay) liveTextDisplay.innerText = cleanText;
+
+      const currentId = window.SidebarManager.currentSessionId;
+      let activeModel = document.getElementById("chat-model-select")?.value || "llama3.2";
+      
+      if (typeof window.appendUserMessage === "function") window.appendUserMessage(cleanText);
+      window.ChatMessages.push({ role: "user", content: cleanText });
+      
+      console.log("[Voice] Sending to Ollama...");
+      window.bridgeService.sendMessage(currentId, cleanText, activeModel);
+
+      // Force mic back on to allow interrupting the AI while it thinks/speaks
+      setTimeout(() => { window.bridgeService.pyBridge.start_listening(); }, 500);
+    });
+  }
+
+  // 2. Live Text Syncing
+  window.bridgeService.on("stream:token", (token) => {
+    if (window.isVoiceModeActive) {
+      currentVoiceResponse += token;
+      // Strip markdown symbols for clean display
+      const cleanVisualText = currentVoiceResponse.replace(/[*#`_]/g, '');
+      if (liveTextDisplay) liveTextDisplay.innerText = cleanVisualText;
+    }
+  });
+
+  document.addEventListener("stream:started", () => {
+    if (window.isVoiceModeActive) setOrbState("speaking");
+  });
+
+  // 3. Trigger Text-to-Speech when generation ends
+  window.bridgeService.on("stream:end", () => {
+    if (window.isVoiceModeActive && currentVoiceResponse) {
+      const cleanText = currentVoiceResponse.replace(/[*#`_]/g, '').trim();
+      console.log("[Voice] Stream ended. Triggering TTS with text:", cleanText);
+      
+      if (cleanText && typeof window.speakResponse === "function") {
+        window.speakResponse(cleanText);
+      }
+    }
+  });
+
+  // 4. Loop reset after AI stops speaking
+  document.addEventListener("tts:ended", () => {
+    if (window.isVoiceModeActive) {
+      console.log("[Voice] TTS finished. Ready for next prompt.");
+      setOrbState("listening");
+      if (liveTextDisplay) liveTextDisplay.innerText = "Listening...";
+      if (window.bridgeService?.pyBridge) window.bridgeService.pyBridge.start_listening();
+    }
+  });
 });

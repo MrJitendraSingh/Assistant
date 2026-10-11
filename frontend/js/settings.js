@@ -103,7 +103,10 @@ function initializeSettingsUI() {
       document.getElementById("setting-ai-name").value = aiName || "";
       
       const voiceSelect = document.getElementById("setting-voice-select");
-      if (voiceSelect) voiceSelect.value = voiceProfile || "system-default";
+      if (voiceSelect) {
+        voiceSelect.value = voiceProfile || "system-default";
+        window.activeVoiceProfile = voiceSelect.value; 
+      }
     });
   }
   hookBridgeEvents();

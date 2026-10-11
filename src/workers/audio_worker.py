@@ -8,6 +8,8 @@ class AudioListenWorker(QThread):
     def run(self):
         self.listening_status.emit(True)
         recognizer = sr.Recognizer()
+        recognizer.pause_threshold = 2.0
+        recognizer.non_speaking_duration = 0.5 
         
         try:
             with sr.Microphone() as source:

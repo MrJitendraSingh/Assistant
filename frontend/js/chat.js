@@ -170,6 +170,12 @@ document.addEventListener("DOMContentLoaded", () => {
       activePayload.innerHTML = renderMarkdownSafe(currentRawMarkdown);
       attachCodeButtons(activePayload);
       if (activeWrapper) appendActions(activeWrapper, currentRawMarkdown);
+      
+      // NEW: Speak the final clean text out loud
+      if (typeof window.speakResponse === "function" && !window.isVoiceModeActive) {
+        // innerText strips out HTML and Markdown, giving us plain readable text
+        window.speakResponse(activePayload.innerText); 
+      }
     }
     window.ChatMessages.push({ role: "assistant", content: currentRawMarkdown });
     
@@ -177,7 +183,6 @@ document.addEventListener("DOMContentLoaded", () => {
     activePayload = null;
     activeWrapper = null;
     
-    // Dispatch event to tell input.js to unlock the input box
     document.dispatchEvent(new Event("stream:ended"));
   });
 });
